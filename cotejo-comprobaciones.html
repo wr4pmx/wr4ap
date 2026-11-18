@@ -3,11 +3,11 @@
 <header><a href="./bandeja-documental.html">← WR4P / Bandeja documental</a><h1>Cotejo de comprobaciones</h1><div class="muted">Carátula + soportes → relaciones → paquete de entrega</div></header><main>
 <section class="panel"><h2>1. Datos de la comprobación</h2><div class="grid"><label>Proyecto<input id="project" value="ENEG"></label><label>Folio<input id="batch" value="AF-002"></label><label>Responsable<input id="owner" placeholder="Nombre del responsable"></label></div><p class="muted small">No se envían documentos al servidor. Los archivos se procesan temporalmente en tu navegador.</p></section>
 <section class="panel"><h2>2. Importar carátula</h2><p class="muted">Acepta CSV y Excel (.xlsx/.xls). Selecciona la fila que contiene los encabezados si es necesario. También puedes capturar renglones manualmente.</p><input id="cover" type="file" accept=".csv,.xlsx,.xls"><button id="readCover">Leer carátula</button><button id="addRow" class="alt">+ Renglón manual</button><p id="coverStatus" class="muted small"></p><div class="scroll"><table><thead><tr><th>Ref.</th><th>Concepto</th><th>Proveedor</th><th>Importe</th><th>Soportes</th><th>Estado</th><th></th></tr></thead><tbody id="rows"></tbody></table></div></section>
-<section class="panel"><h2>3. Recibir soportes</h2><input id="support" type="file" multiple accept=".pdf,.xml,.jpg,.jpeg,.png,.txt,.zip"><button id="readFiles">Analizar y cotejar</button><p class="muted small">También acepta ZIP con soportes. Los XML y PDF con el mismo nombre base se vinculan como pareja; la asociación al renglón sigue siendo una propuesta.</p><p id="status" class="muted small"></p><div class="scroll"><table><thead><tr><th>Original</th><th>Datos detectados</th><th>Renglón asociado</th><th>Nombre de salida</th><th>Revisión</th></tr></thead><tbody id="files"></tbody></table></div></section>
+<section class="panel"><h2>3. Recibir soportes</h2><input id="support" type="file" multiple accept=".pdf,.xml,.jpg,.jpeg,.png,.txt,.zip"><button id="readFiles">Analizar y cotejar</button><button id="receiveBandeja" class="alt">Recibir de Bandeja</button><p class="muted small">También acepta ZIP con soportes. Los XML y PDF con el mismo nombre base se vinculan como pareja; la asociación al renglón sigue siendo una propuesta.</p><p id="status" class="muted small"></p><div class="scroll"><table><thead><tr><th>Original</th><th>Datos detectados</th><th>Renglón asociado</th><th>Nombre de salida</th><th>Revisión</th></tr></thead><tbody id="files"></tbody></table></div></section>
 <section class="panel"><h2>4. Exportar entrega</h2><div class="row"><div><strong id="stats">0 renglones · 0 soportes</strong><p class="muted small">Solo se incluyen soportes asociados y confirmados. Los originales no se modifican.</p></div><div><button id="download">Generar ZIP de entrega</button></div></div><p id="exportStatus" class="muted"></p><p class="muted small">El ZIP incluye soportes renombrados, carátula de cotejo CSV y manifiesto JSON. La carátula Excel original se conserva dentro del ZIP si fue importada, pero sus celdas no se modifican.</p></section></main>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-<script>
+<script src="./wr4p-transfer.js"></script><script>
 'use strict';
 const $=id=>document.getElementById(id), state={rows:[],files:[],cover:null};
 const clean=s=>String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-zA-Z0-9_-]+/g,'_').replace(/^_+|_+$/g,'').slice(0,70)||'SIN_DATO';
@@ -55,9 +55,9 @@ function pairSupports(){
   if(matches.length===1){f.pairId=matches[0].id;matches[0].pairId=f.id;if(matches[0].rowId&&!f.rowId)f.rowId=matches[0].rowId;if(f.rowId&&!matches[0].rowId)matches[0].rowId=f.rowId}
  }
 }
-$('readFiles').addEventListener('click',async()=>{
+async function processSupportFiles(selected){
 try{
- const selected=await unpack(Array.from($('support').files));
+
  if(!selected.length)throw Error('Selecciona soportes');
  state.files=[];let i=0;
  for(const file of selected){
@@ -69,7 +69,10 @@ try{
  $('status').textContent='Leídos '+state.files.length+' soportes. Parejas PDF/XML detectadas: '+state.files.filter(f=>ext(f.original)==='pdf'&&f.pairId).length+'. Verifica los renglones sugeridos.';
  render()
 }catch(e){$('status').textContent='Error: '+e.message}
-});
+}
+$('readFiles').addEventListener('click',async()=>{try{await processSupportFiles(await unpack(Array.from($('support').files)))}catch(e){$('status').textContent='Error: '+e.message}});
+$('receiveBandeja').addEventListener('click',async()=>{try{const transfer=await WR4PTransfer.get();if(!transfer?.files?.length)throw Error('No hay documentos transferidos');if(transfer.project)$('project').value=transfer.project;if(transfer.batch)$('batch').value=transfer.batch;await processSupportFiles(transfer.files);$('status').textContent+=' Recibidos desde Bandeja.'}catch(e){$('status').textContent='Error: '+e.message}});
+if(new URLSearchParams(location.search).has('import'))$('receiveBandeja').click();
 function csvCell(v){return '"'+String(v??'').replace(/"/g,'""')+'"'}
 function indexCsv(){const keys=['Referencia','Concepto','Proveedor','Importe','Revisado','Archivo_original','Archivo_exportado','UUID_XML'];const lines=[keys.map(csvCell).join(',')];for(const r of state.rows){const files=state.files.filter(f=>f.rowId===r.id);for(const f of files.length?files:[null])lines.push([reference(r),r.concept,r.supplier,r.amount,r.approved?'SI':'NO',f?.original||'',f?nameFor(f):'',f?.uuid||''].map(csvCell).join(','))}return '\ufeff'+lines.join('\r\n')}
 function save(blob,name){const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),10000)}
