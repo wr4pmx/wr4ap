@@ -4,7 +4,8 @@
 <section class="panel"><h2>1. Datos de la comprobación</h2><div class="grid"><label>Proyecto<input id="project" value="ENEG"></label><label>Folio<input id="batch" value="AF-002"></label><label>Responsable<input id="owner" placeholder="Nombre del responsable"></label></div><p class="muted small">No se envían documentos al servidor. Los archivos se procesan temporalmente en tu navegador.</p></section>
 <section class="panel"><h2>2. Importar carátula</h2><p class="muted">Acepta CSV y Excel (.xlsx/.xls). Selecciona la fila que contiene los encabezados si es necesario. También puedes capturar renglones manualmente.</p><input id="cover" type="file" accept=".csv,.xlsx,.xls"><button id="readCover">Leer carátula</button><button id="addRow" class="alt">+ Renglón manual</button><p id="coverStatus" class="muted small"></p><div class="scroll"><table><thead><tr><th>Ref.</th><th>Concepto</th><th>Proveedor</th><th>Importe</th><th>Soportes</th><th>Estado</th><th></th></tr></thead><tbody id="rows"></tbody></table></div></section>
 <section class="panel"><h2>3. Recibir soportes</h2><input id="support" type="file" multiple accept=".pdf,.xml,.jpg,.jpeg,.png,.txt,.zip"><button id="readFiles">Analizar y cotejar</button><button id="receiveBandeja" class="alt">Recibir de Bandeja</button><p class="muted small">También acepta ZIP con soportes. Los XML y PDF con el mismo nombre base se vinculan como pareja; la asociación al renglón sigue siendo una propuesta.</p><p id="status" class="muted small"></p><div class="scroll"><table><thead><tr><th>Original</th><th>Datos detectados</th><th>Renglón asociado</th><th>Nombre de salida</th><th>Revisión</th></tr></thead><tbody id="files"></tbody></table></div></section>
-<section class="panel"><h2>4. Exportar entrega</h2><div class="row"><div><strong id="stats">0 renglones · 0 soportes</strong><p class="muted small">Solo se incluyen soportes asociados y confirmados. Los originales no se modifican.</p></div><div><button id="download">Generar ZIP de entrega</button></div></div><p id="exportStatus" class="muted"></p><p class="muted small">El ZIP incluye soportes renombrados, carátula de cotejo CSV y manifiesto JSON. La carátula Excel original se conserva dentro del ZIP si fue importada, pero sus celdas no se modifican.</p></section></main>
+<section class="panel"><h2>4. Excepciones de comprobación</h2><p class="muted small">Alertas orientativas: una fotografía o ticket no siempre requiere XML; confirma las reglas de cada producción. Los importes de XML se comparan contra la carátula cuando hay un único XML por renglón.</p><div id="exceptions" aria-live="polite"></div></section>
+<section class="panel"><h2>5. Exportar entrega</h2><div class="row"><div><strong id="stats">0 renglones · 0 soportes</strong><p class="muted small">Solo se incluyen soportes asociados y confirmados. Los originales no se modifican.</p></div><div><button id="download">Generar ZIP de entrega</button></div></div><p id="exportStatus" class="muted"></p><p class="muted small">El ZIP incluye soportes renombrados, carátula de cotejo CSV y manifiesto JSON. La carátula Excel original se conserva dentro del ZIP si fue importada, pero sus celdas no se modifican.</p></section></main>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="./wr4p-transfer.js"></script><script>
@@ -19,10 +20,34 @@ const uid=()=>globalThis.crypto?.randomUUID?.()||Date.now().toString(36)+Math.ra
 function reference(r){return clean($('batch').value)+'-'+String(r.number).padStart(3,'0')}
 function add(v={}){state.rows.push({id:uid(),number:state.rows.length+1,concept:String(v.concept||''),supplier:String(v.supplier||''),amount:v.amount??'',approved:false});render()}
 function nameFor(f){const r=state.rows.find(r=>r.id===f.rowId);return (r?reference(r):clean($('batch').value)+'-SIN_ASIGNAR')+'_'+clean(r?.supplier||r?.concept||f.supplier||'SOPORTE')+'_'+String(f.seq).padStart(3,'0')+'.'+ext(f.original)}
+function collectExceptions(){
+ const result=[];
+ for(const r of state.rows){
+  const files=state.files.filter(f=>f.rowId===r.id);
+  const pdf=files.filter(f=>ext(f.original)==='pdf');
+  const xml=files.filter(f=>ext(f.original)==='xml');
+  const ref=reference(r);
+  if(!files.length)result.push({level:'warn',text:ref+' · Sin soportes asociados'});
+  if(xml.length&&!pdf.length)result.push({level:'warn',text:ref+' · XML sin PDF asociado al renglón'});
+  if(pdf.length&&!xml.length)result.push({level:'warn',text:ref+' · PDF sin XML; confirma si es factura CFDI o ticket'});
+  if(xml.length===1&&Number.isFinite(num(r.amount))&&Number.isFinite(num(xml[0].amount))&&xml[0].amount!==''&&Math.abs(num(r.amount)-num(xml[0].amount))>0.01)result.push({level:'warn',text:ref+' · Diferencia de importe entre carátula y XML'});
+  if(!r.approved)result.push({level:'warn',text:ref+' · Renglón pendiente de revisión'});
+ }
+ for(const f of state.files){
+  if(!f.rowId)result.push({level:'warn',text:f.original+' · Soporte sin renglón'});
+  if(f.error)result.push({level:'warn',text:f.original+' · Error al leer: '+f.error});
+  if(f.pairId){const other=state.files.find(x=>x.id===f.pairId);if(other&&f.rowId&&other.rowId&&f.rowId!==other.rowId&&f.id<other.id)result.push({level:'warn',text:f.original+' / '+other.original+' · Pareja PDF/XML asignada a renglones distintos'})}
+ }
+ const uuids=new Map();
+ for(const f of state.files.filter(x=>x.uuid)){const id=f.uuid.toLowerCase();if(uuids.has(id))result.push({level:'warn',text:f.original+' · UUID duplicado con '+uuids.get(id)});else uuids.set(id,f.original)}
+ return result;
+}
 function render(){
 $('rows').innerHTML=state.rows.map((r,i)=>'<tr><td>'+esc(reference(r))+'</td><td><input data-row="'+i+'" data-field="concept" value="'+esc(r.concept)+'"></td><td><input data-row="'+i+'" data-field="supplier" value="'+esc(r.supplier)+'"></td><td><input class="num" data-row="'+i+'" data-field="amount" value="'+esc(r.amount)+'"></td><td>'+state.files.filter(f=>f.rowId===r.id).length+'</td><td><span class="'+(r.approved?'good':'warn')+'">'+(r.approved?'Revisado':'Pendiente')+'</span></td><td><button class="alt" data-approve="'+i+'">'+(r.approved?'Reabrir':'Revisar')+'</button></td></tr>').join('');
 $('files').innerHTML=state.files.map((f,i)=>'<tr><td class="path">'+esc(f.original)+'</td><td class="small">'+esc([f.supplier,f.amount?('$'+f.amount):'',f.uuid?('UUID '+f.uuid):'',f.error].filter(Boolean).join(' · '))+'</td><td><select data-file="'+i+'"><option value="">Sin asociar</option>'+state.rows.map(r=>'<option value="'+esc(r.id)+'" '+(f.rowId===r.id?'selected':'')+'>'+esc(reference(r))+' · '+esc(r.concept.slice(0,30))+'</option>').join('')+'</select></td><td class="path">'+esc(nameFor(f))+'</td><td><span class="'+(f.rowId?'good':'warn')+'">'+(f.rowId?'Asociado':'Revisar')+'</span></td></tr>').join('');
-$('stats').textContent=state.rows.length+' renglones · '+state.files.length+' soportes · '+state.files.filter(f=>f.rowId).length+' asociados';
+const issues=collectExceptions();
+$('exceptions').innerHTML=issues.length?'<p class="warn"><strong>'+issues.length+' observaciones por revisar</strong></p><ul>'+issues.map(x=>'<li class="warn">'+esc(x.text)+'</li>').join('')+'</ul>':'<p class="good">Sin excepciones detectadas por las reglas automáticas. No sustituye revisión fiscal ni documental.</p>';
+$('stats').textContent=state.rows.length+' renglones · '+state.files.length+' soportes · '+state.files.filter(f=>f.rowId).length+' asociados · '+issues.length+' observaciones';
 }
 $('rows').addEventListener('change',e=>{const i=e.target.dataset.row,field=e.target.dataset.field;if(i===undefined||!field)return;state.rows[Number(i)][field]=e.target.value;state.rows[Number(i)].approved=false;render()});
 $('rows').addEventListener('click',e=>{const i=e.target.dataset.approve;if(i===undefined)return;state.rows[Number(i)].approved=!state.rows[Number(i)].approved;render()});
