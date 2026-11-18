@@ -3,7 +3,7 @@
 <header><a href="./bandeja-documental.html">← WR4P / Bandeja documental</a><h1>Cotejo de comprobaciones</h1><div class="muted">Carátula + soportes → relaciones → paquete de entrega</div></header><main>
 <section class="panel"><h2>1. Datos de la comprobación</h2><div class="grid"><label>Proyecto<input id="project" value="ENEG"></label><label>Folio<input id="batch" value="AF-002"></label><label>Responsable<input id="owner" placeholder="Nombre del responsable"></label></div><p class="muted small">No se envían documentos al servidor. Los archivos se procesan temporalmente en tu navegador.</p></section>
 <section class="panel"><h2>2. Importar carátula</h2><p class="muted">Acepta CSV y Excel (.xlsx/.xls). Selecciona la fila que contiene los encabezados si es necesario. También puedes capturar renglones manualmente.</p><input id="cover" type="file" accept=".csv,.xlsx,.xls"><button id="readCover">Leer carátula</button><button id="addRow" class="alt">+ Renglón manual</button><p id="coverStatus" class="muted small"></p><div class="scroll"><table><thead><tr><th>Ref.</th><th>Concepto</th><th>Proveedor</th><th>Importe</th><th>Soportes</th><th>Estado</th><th></th></tr></thead><tbody id="rows"></tbody></table></div></section>
-<section class="panel"><h2>3. Recibir soportes</h2><input id="support" type="file" multiple accept=".pdf,.xml,.jpg,.jpeg,.png,.txt"><button id="readFiles">Analizar y cotejar</button><p id="status" class="muted small"></p><div class="scroll"><table><thead><tr><th>Original</th><th>Datos detectados</th><th>Renglón asociado</th><th>Nombre de salida</th><th>Revisión</th></tr></thead><tbody id="files"></tbody></table></div></section>
+<section class="panel"><h2>3. Recibir soportes</h2><input id="support" type="file" multiple accept=".pdf,.xml,.jpg,.jpeg,.png,.txt,.zip"><button id="readFiles">Analizar y cotejar</button><p class="muted small">También acepta ZIP con soportes. Los XML y PDF con el mismo nombre base se vinculan como pareja; la asociación al renglón sigue siendo una propuesta.</p><p id="status" class="muted small"></p><div class="scroll"><table><thead><tr><th>Original</th><th>Datos detectados</th><th>Renglón asociado</th><th>Nombre de salida</th><th>Revisión</th></tr></thead><tbody id="files"></tbody></table></div></section>
 <section class="panel"><h2>4. Exportar entrega</h2><div class="row"><div><strong id="stats">0 renglones · 0 soportes</strong><p class="muted small">Solo se incluyen soportes asociados y confirmados. Los originales no se modifican.</p></div><div><button id="download">Generar ZIP de entrega</button></div></div><p id="exportStatus" class="muted"></p><p class="muted small">El ZIP incluye soportes renombrados, carátula de cotejo CSV y manifiesto JSON. La carátula Excel original se conserva dentro del ZIP si fue importada, pero sus celdas no se modifican.</p></section></main>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
@@ -14,6 +14,7 @@ const clean=s=>String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').rep
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const ext=s=>s.split('.').pop().toLowerCase();
 const num=v=>{const s=String(v??'').replace(/[^0-9.,-]/g,'');if(!s)return NaN;const x=s.includes(',')&&s.includes('.')?s.replace(/,/g,''):s.replace(',','.');return Number(x)};
+const basename=s=>String(s).split('/').pop().replace(/\.[^.]+$/,'').toLowerCase().replace(/[^a-z0-9]/g,'');
 const uid=()=>globalThis.crypto?.randomUUID?.()||Date.now().toString(36)+Math.random().toString(36).slice(2);
 function reference(r){return clean($('batch').value)+'-'+String(r.number).padStart(3,'0')}
 function add(v={}){state.rows.push({id:uid(),number:state.rows.length+1,concept:String(v.concept||''),supplier:String(v.supplier||''),amount:v.amount??'',approved:false});render()}
@@ -34,10 +35,44 @@ const rows=[];for(const line of data.slice(header+1)){const concept=String(line[
 $('readCover').addEventListener('click',async()=>{try{const file=$('cover').files[0];if(!file)throw Error('Selecciona una carátula');let data;if(ext(file.name)==='csv')data=parseCsv((await file.text()).replace(/^\ufeff/,''));else{if(!globalThis.XLSX)throw Error('No se cargó el lector Excel; comprueba conexión a internet');const wb=XLSX.read(await file.arrayBuffer(),{type:'array'});data=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:''})}const parsed=mapCover(data);state.rows=[];state.files.forEach(f=>f.rowId=null);parsed.forEach(add);state.cover=file;$('coverStatus').textContent='Carátula importada: '+parsed.length+' renglones. Revisa importes y encabezados antes de exportar.';render()}catch(e){$('coverStatus').textContent='Error: '+e.message}});
 function parseXml(text){const doc=new DOMParser().parseFromString(text,'application/xml');if(doc.querySelector('parsererror'))throw Error('XML inválido');const all=Array.from(doc.getElementsByTagName('*'));const root=doc.documentElement;if(root.localName!=='Comprobante')throw Error('No es CFDI');const emisor=all.find(x=>x.localName==='Emisor'),timbre=all.find(x=>x.localName==='TimbreFiscalDigital');return {supplier:emisor?.getAttribute('Nombre')||emisor?.getAttribute('Rfc')||'',amount:root.getAttribute('Total')||'',uuid:timbre?.getAttribute('UUID')||''}}
 function matchRow(f){const filename=f.original;const m=filename.match(/(?:^|[_\- ])(\d{1,3})(?:[_\-. ]|$)/);if(m){const r=state.rows.find(r=>r.number===Number(m[1]));if(r)return r.id}if(f.amount){const n=num(f.amount),matches=state.rows.filter(r=>Math.abs(num(r.amount)-n)<0.001);if(matches.length===1)return matches[0].id}return null}
-$('readFiles').addEventListener('click',async()=>{try{const selected=Array.from($('support').files);if(!selected.length)throw Error('Selecciona soportes');state.files=[];let i=0;for(const file of selected){const f={id:uid(),file,original:file.name,seq:++i,rowId:null,supplier:'',amount:'',uuid:'',error:''};if(ext(file.name)==='xml'){try{Object.assign(f,parseXml(await file.text()))}catch(e){f.error=e.message}}f.rowId=matchRow(f);state.files.push(f)}$('status').textContent='Leídos '+state.files.length+' soportes. Asociaciones por número de archivo o importe único: revisa cada una.';render()}catch(e){$('status').textContent='Error: '+e.message}});
+async function unpack(inputs){
+const output=[];
+for(const f of inputs){
+ if(ext(f.name)!=='zip'){output.push(f);continue}
+ if(!globalThis.JSZip)throw Error('No se cargó el lector ZIP; comprueba la conexión');
+ const zip=await JSZip.loadAsync(f);
+ const entries=Object.values(zip.files).filter(e=>!e.dir&&!e.name.startsWith('__MACOSX/')&&!e.name.split('/').pop().startsWith('.')&&/\.(pdf|xml|jpg|jpeg|png|txt)$/i.test(e.name));
+ if(entries.length>250)throw Error('ZIP demasiado grande: máximo 250 archivos');
+ for(const entry of entries){const bytes=await entry.async('uint8array');if(bytes.byteLength>25*1024*1024)throw Error('Un soporte excede 25 MB: '+entry.name);output.push(new File([bytes],entry.name.split('/').pop(),{type:'application/octet-stream'}))}
+}
+if(output.length>250)throw Error('Máximo 250 soportes por comprobación');
+return output
+}
+function pairSupports(){
+ const xmls=state.files.filter(f=>ext(f.original)==='xml');
+ for(const f of state.files.filter(f=>ext(f.original)==='pdf')){
+  const matches=xmls.filter(x=>basename(x.original)===basename(f.original));
+  if(matches.length===1){f.pairId=matches[0].id;matches[0].pairId=f.id;if(matches[0].rowId&&!f.rowId)f.rowId=matches[0].rowId;if(f.rowId&&!matches[0].rowId)matches[0].rowId=f.rowId}
+ }
+}
+$('readFiles').addEventListener('click',async()=>{
+try{
+ const selected=await unpack(Array.from($('support').files));
+ if(!selected.length)throw Error('Selecciona soportes');
+ state.files=[];let i=0;
+ for(const file of selected){
+  const f={id:uid(),file,original:file.name,seq:++i,rowId:null,supplier:'',amount:'',uuid:'',error:'',pairId:null};
+  if(ext(file.name)==='xml'){try{Object.assign(f,parseXml(await file.text()))}catch(e){f.error=e.message}}
+  f.rowId=matchRow(f);state.files.push(f)
+ }
+ pairSupports();
+ $('status').textContent='Leídos '+state.files.length+' soportes. Parejas PDF/XML detectadas: '+state.files.filter(f=>ext(f.original)==='pdf'&&f.pairId).length+'. Verifica los renglones sugeridos.';
+ render()
+}catch(e){$('status').textContent='Error: '+e.message}
+});
 function csvCell(v){return '"'+String(v??'').replace(/"/g,'""')+'"'}
 function indexCsv(){const keys=['Referencia','Concepto','Proveedor','Importe','Revisado','Archivo_original','Archivo_exportado','UUID_XML'];const lines=[keys.map(csvCell).join(',')];for(const r of state.rows){const files=state.files.filter(f=>f.rowId===r.id);for(const f of files.length?files:[null])lines.push([reference(r),r.concept,r.supplier,r.amount,r.approved?'SI':'NO',f?.original||'',f?nameFor(f):'',f?.uuid||''].map(csvCell).join(','))}return '\ufeff'+lines.join('\r\n')}
 function save(blob,name){const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),10000)}
-$('download').addEventListener('click',async()=>{try{if(!globalThis.JSZip)throw Error('No se cargó el generador ZIP; comprueba conexión a internet');if(!state.rows.length)throw Error('Primero importa una carátula o agrega renglones');const ready=state.files.filter(f=>f.rowId&&state.rows.find(r=>r.id===f.rowId)?.approved);if(!ready.length)throw Error('No hay soportes asociados a renglones revisados');const zip=new JSZip(),folder=zip.folder(clean($('project').value)+'/'+clean($('batch').value));folder.file('CARATULA_COTEJO.csv',indexCsv());if(state.cover)folder.file('ORIGINAL_'+clean(state.cover.name.replace(/\.[^.]+$/,''))+'.'+ext(state.cover.name),state.cover);const manifest={project:$('project').value,batch:$('batch').value,owner:$('owner').value,rows:state.rows.map(r=>({reference:reference(r),concept:r.concept,supplier:r.supplier,amount:r.amount,approved:r.approved})),files:ready.map(f=>({original:f.original,exported:nameFor(f),row:reference(state.rows.find(r=>r.id===f.rowId)),uuid:f.uuid}))};folder.file('MANIFIESTO.json',JSON.stringify(manifest,null,2));for(const f of ready)folder.file('SOPORTES/'+nameFor(f),f.file);$('exportStatus').textContent='Preparando ZIP…';save(await zip.generateAsync({type:'blob'}),clean($('project').value)+'_'+clean($('batch').value)+'_COMPROBACION.zip');$('exportStatus').textContent='ZIP generado con '+ready.length+' soportes. Comprueba el índice antes de entregar.'}catch(e){$('exportStatus').textContent='Error: '+e.message}});
+$('download').addEventListener('click',async()=>{try{if(!globalThis.JSZip)throw Error('No se cargó el generador ZIP; comprueba conexión a internet');if(!state.rows.length)throw Error('Primero importa una carátula o agrega renglones');const ready=state.files.filter(f=>f.rowId&&state.rows.find(r=>r.id===f.rowId)?.approved);if(!ready.length)throw Error('No hay soportes asociados a renglones revisados');const zip=new JSZip(),folder=zip.folder(clean($('project').value)+'/'+clean($('batch').value));folder.file('CARATULA_COTEJO.csv',indexCsv());if(state.cover)folder.file('ORIGINAL_'+clean(state.cover.name.replace(/\.[^.]+$/,''))+'.'+ext(state.cover.name),state.cover);const manifest={project:$('project').value,batch:$('batch').value,owner:$('owner').value,rows:state.rows.map(r=>({reference:reference(r),concept:r.concept,supplier:r.supplier,amount:r.amount,approved:r.approved})),files:ready.map(f=>({original:f.original,exported:nameFor(f),row:reference(state.rows.find(r=>r.id===f.rowId)),uuid:f.uuid,pairId:f.pairId||null}))};folder.file('MANIFIESTO.json',JSON.stringify(manifest,null,2));const used=new Set();for(const f of ready){const proposed=nameFor(f);if(used.has(proposed))throw Error('Dos soportes generan el mismo nombre: '+proposed);used.add(proposed);folder.file('SOPORTES/'+proposed,f.file)}$('exportStatus').textContent='Preparando ZIP…';save(await zip.generateAsync({type:'blob'}),clean($('project').value)+'_'+clean($('batch').value)+'_COMPROBACION.zip');$('exportStatus').textContent='ZIP generado con '+ready.length+' soportes. Comprueba el índice antes de entregar.'}catch(e){$('exportStatus').textContent='Error: '+e.message}});
 render();
 </script></body></html>
