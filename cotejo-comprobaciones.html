@@ -95,7 +95,7 @@ function parseXml(text){const doc=new DOMParser().parseFromString(text,'applicat
 function matchRow(f){
  // Never interpret arbitrary invoice numbers as row numbers.
  const stem=f.original.replace(/\.[^.]+$/,'');
- const batch=clean($('batch').value).replace(/[.*+?^$\{\}()|[\]\\]/g,'\\function matchRow(f){const filename=f.original;const m=filename.match(/(?:^|[_\- ])(\d{1,3})(?:[_\-. ]|$)/);if(m){const r=state.rows.find(r=>r.number===Number(m[1]));if(r)return r.id}if(f.amount){const n=num(f.amount),matches=state.rows.filter(r=>Math.abs(num(r.amount)-n)<0.001);if(matches.length===1)return matches[0].id}return null}');
+ const batch=clean($('batch').value).replace(/[^a-z0-9_-]/gi,'');
  const explicit=new RegExp('(?:^|[^a-z0-9])'+batch+'[-_ ]?(\\d{1,3})(?=$|[^0-9])','i').exec(stem);
  if(explicit){const r=state.rows.find(r=>r.number===Number(explicit[1]));if(r)return r.id}
  if(f.amount!==''&&f.amount!=null){
