@@ -87,7 +87,7 @@ async function importCover(file){
   for(const name of wb.SheetNames){try{parsed=mapCover(XLSX.utils.sheet_to_json(wb.Sheets[name],{header:1,defval:''}));chosen=name;break}catch(e){}}
   if(!parsed)throw Error('Ninguna hoja tiene columnas de concepto e importe reconocibles');
  }
- state.rows=[];state.files.forEach(f=>f.rowId=null);parsed.forEach(add);state.cover=file;
+ state.rows=[];state.files.forEach(f=>{f.rowId=null;f.pairId=null});parsed.forEach(add);state.cover=file;state.files.forEach(f=>f.rowId=matchRow(f));pairSupports();
  $('coverStatus').textContent='Carátula importada: '+parsed.length+' renglones'+(chosen?' · hoja '+chosen:'')+'. Revisa los datos.';render();
 }
 $('readCover').addEventListener('click',async()=>{try{await importCover($('cover').files[0])}catch(e){$('coverStatus').textContent='Error: '+e.message}});
@@ -144,7 +144,7 @@ $('receiveBandeja').addEventListener('click',async()=>{try{const transfer=await 
 for(const f of transfer.files.filter(f=>/\.(csv|xlsx|xls)$/i.test(f.name))){try{await importCover(f);coverLoaded=true;break}catch(e){$('coverStatus').textContent='Carátula pendiente: '+e.message}}
 const supports=transfer.files.filter(f=>/\.(pdf|xml|jpg|jpeg|png|txt|zip)$/i.test(f.name));
 if(supports.length)await processSupportFiles(await unpack(supports));
-$('status').textContent+=' Transferencia recibida'+(coverLoaded?' con carátula':'')+'.'}catch(e){$('status').textContent='Error: '+e.message}});
+$('status').textContent+=' Transferencia recibida'+(coverLoaded?' con carátula':'')+'.';await WR4PTransfer.clear()}catch(e){$('status').textContent='Error: '+e.message}});
 if(new URLSearchParams(location.search).has('import'))$('receiveBandeja').click();
 function csvCell(v){return '"'+String(v??'').replace(/"/g,'""')+'"'}
 function indexCsv(){const keys=['Referencia','Concepto','Proveedor','Importe','Revisado','Archivo_original','Archivo_exportado','UUID_XML'];const lines=[keys.map(csvCell).join(',')];for(const r of state.rows){const files=state.files.filter(f=>f.rowId===r.id);for(const f of files.length?files:[null])lines.push([reference(r),r.concept,r.supplier,r.amount,r.approved?'SI':'NO',f?.original||'',f?nameFor(f):'',f?.uuid||''].map(csvCell).join(','))}return '\ufeff'+lines.join('\r\n')}
