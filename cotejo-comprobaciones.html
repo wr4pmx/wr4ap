@@ -112,7 +112,7 @@ for(const f of inputs){
  const zip=await JSZip.loadAsync(f);
  const entries=Object.values(zip.files).filter(e=>!e.dir&&!e.name.startsWith('__MACOSX/')&&!e.name.split('/').pop().startsWith('.')&&/\.(pdf|xml|jpg|jpeg|png|txt)$/i.test(e.name));
  if(entries.length>250)throw Error('ZIP demasiado grande: máximo 250 archivos');
- for(const entry of entries){const bytes=await entry.async('uint8array');if(bytes.byteLength>25*1024*1024)throw Error('Un soporte excede 25 MB: '+entry.name);output.push(new File([bytes],entry.name.split('/').pop(),{type:'application/octet-stream'}))}
+ for(const entry of entries){if(entry._data?.uncompressedSize>25*1024*1024)throw Error('Un soporte ZIP excede 25 MB: '+entry.name);const bytes=await entry.async('uint8array');if(bytes.byteLength>25*1024*1024)throw Error('Un soporte excede 25 MB: '+entry.name);output.push(new File([bytes],entry.name.split('/').pop(),{type:'application/octet-stream'}))}
 }
 if(output.length>250)throw Error('Máximo 250 soportes por comprobación');
 return output
@@ -128,6 +128,8 @@ async function processSupportFiles(selected){
 try{
 
  if(!selected.length)throw Error('Selecciona soportes');
+ if(selected.length>250)throw Error('Máximo 250 soportes');
+ if(selected.some(f=>f.size>25*1024*1024))throw Error('Un soporte excede 25 MB');
  state.files=[];let i=0;
  for(const file of selected){
   const f={id:uid(),file,original:file.name,seq:++i,rowId:null,supplier:'',amount:'',uuid:'',error:'',pairId:null};
