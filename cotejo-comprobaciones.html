@@ -14,7 +14,19 @@ const $=id=>document.getElementById(id), state={rows:[],files:[],cover:null};
 const clean=s=>String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-zA-Z0-9_-]+/g,'_').replace(/^_+|_+$/g,'').slice(0,70)||'SIN_DATO';
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const ext=s=>s.split('.').pop().toLowerCase();
-const num=v=>{const s=String(v??'').replace(/[^0-9.,-]/g,'');if(!s)return NaN;const x=s.includes(',')&&s.includes('.')?s.replace(/,/g,''):s.replace(',','.');return Number(x)};
+const num=v=>{
+ const raw=String(v??'').trim().replace(/[^0-9.,-]/g,'');
+ if(!raw||!/\d/.test(raw))return NaN;
+ const dot=raw.lastIndexOf('.'),comma=raw.lastIndexOf(',');
+ let decimal='';
+ if(dot>=0&&comma>=0)decimal=dot>comma?'.':',';
+ else if(dot>=0||comma>=0){
+  const sep=dot>=0?'.':',',pieces=raw.split(sep);
+  decimal=pieces.length===2&&pieces[1].length!==3?sep:'';
+ }
+ const cleaned=decimal?raw.replace(new RegExp('\\'+(decimal==='.'?',':'.'),'g'),'').replace(decimal,'.'):raw.replace(/[.,]/g,'');
+ return /^-?\d+(?:\.\d+)?$/.test(cleaned)?Number(cleaned):NaN
+};
 const basename=s=>String(s).split('/').pop().replace(/\.[^.]+$/,'').toLowerCase().replace(/[^a-z0-9]/g,'');
 const uid=()=>globalThis.crypto?.randomUUID?.()||Date.now().toString(36)+Math.random().toString(36).slice(2);
 function reference(r){return clean($('batch').value)+'-'+String(r.number).padStart(3,'0')}
@@ -54,7 +66,15 @@ $('rows').addEventListener('click',e=>{const i=e.target.dataset.approve;if(i===u
 $('files').addEventListener('change',e=>{const i=e.target.dataset.file;if(i===undefined)return;state.files[Number(i)].rowId=e.target.value||null;render()});
 $('addRow').addEventListener('click',()=>add());
 $('batch').addEventListener('change',render);
-function parseCsv(text){const out=[],rows=[];let cell='',row=[],quoted=false;for(let i=0;i<text.length;i++){const c=text[i];if(c==='"'){if(quoted&&text[i+1]==='"'){cell+='"';i++}else quoted=!quoted}else if(c===','&&!quoted){row.push(cell);cell=''}else if((c==='\n'||c==='\r')&&!quoted){if(c==='\r'&&text[i+1]==='\n')i++;row.push(cell);rows.push(row);row=[];cell=''}else cell+=c}if(cell||row.length){row.push(cell);rows.push(row)}return rows}
+function parseCsv(text){
+ const first=(String(text).split(/\r?\n/).find(line=>line.trim())||'');
+ const count=sep=>{let quoted=false,n=0;for(let i=0;i<first.length;i++){if(first[i]==='"'){if(quoted&&first[i+1]==='"')i++;else quoted=!quoted}else if(first[i]===sep&&!quoted)n++}return n};
+ const delimiter=count(';')>count(',')?';':',';
+ const rows=[];let cell='',row=[],quoted=false;
+ for(let i=0;i<text.length;i++){const c=text[i];if(c==='"'){if(quoted&&text[i+1]==='"'){cell+='"';i++}else quoted=!quoted}else if(c===delimiter&&!quoted){row.push(cell);cell=''}else if((c==='\n'||c==='\r')&&!quoted){if(c==='\r'&&text[i+1]==='\n')i++;row.push(cell);rows.push(row);row=[];cell=''}else cell+=c}
+ if(cell||row.length){row.push(cell);rows.push(row)}
+ return rows
+}
 function mapCover(data){const normalized=s=>String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();let header=-1,mapping={};const synonyms={concept:['concepto','descripcion','detalle','gasto','motivo'],supplier:['proveedor','razon social','beneficiario','emisor'],amount:['importe','total','monto','cantidad','valor']};for(let i=0;i<Math.min(data.length,35);i++){const cells=data[i].map(normalized);const found={};for(const [k,opts] of Object.entries(synonyms)){const n=cells.findIndex(c=>opts.some(o=>c.includes(o)));if(n>=0)found[k]=n}if(found.concept!==undefined&&found.amount!==undefined){header=i;mapping=found;break}}if(header<0)throw Error('No encontré encabezados de concepto e importe. Usa captura manual o un CSV con columnas Concepto, Proveedor, Importe.');
 const rows=[];for(const line of data.slice(header+1)){const concept=String(line[mapping.concept]??'').trim();const amount=line[mapping.amount];if(!concept||/^(total|subtotal|suma)$/i.test(concept))continue;const value=num(amount);if(!Number.isFinite(value))continue;rows.push({concept,supplier:mapping.supplier===undefined?'':String(line[mapping.supplier]||''),amount:value.toFixed(2)})}if(!rows.length)throw Error('No se detectaron gastos debajo de los encabezados.');return rows}
 async function importCover(file){
@@ -72,7 +92,18 @@ async function importCover(file){
 }
 $('readCover').addEventListener('click',async()=>{try{await importCover($('cover').files[0])}catch(e){$('coverStatus').textContent='Error: '+e.message}});
 function parseXml(text){const doc=new DOMParser().parseFromString(text,'application/xml');if(doc.querySelector('parsererror'))throw Error('XML inválido');const all=Array.from(doc.getElementsByTagName('*'));const root=doc.documentElement;if(root.localName!=='Comprobante')throw Error('No es CFDI');const emisor=all.find(x=>x.localName==='Emisor'),timbre=all.find(x=>x.localName==='TimbreFiscalDigital');return {supplier:emisor?.getAttribute('Nombre')||emisor?.getAttribute('Rfc')||'',amount:root.getAttribute('Total')||'',uuid:timbre?.getAttribute('UUID')||''}}
-function matchRow(f){const filename=f.original;const m=filename.match(/(?:^|[_\- ])(\d{1,3})(?:[_\-. ]|$)/);if(m){const r=state.rows.find(r=>r.number===Number(m[1]));if(r)return r.id}if(f.amount){const n=num(f.amount),matches=state.rows.filter(r=>Math.abs(num(r.amount)-n)<0.001);if(matches.length===1)return matches[0].id}return null}
+function matchRow(f){
+ // Never interpret arbitrary invoice numbers as row numbers.
+ const stem=f.original.replace(/\.[^.]+$/,'');
+ const batch=clean($('batch').value).replace(/[.*+?^$\{\}()|[\]\\]/g,'\\function matchRow(f){const filename=f.original;const m=filename.match(/(?:^|[_\- ])(\d{1,3})(?:[_\-. ]|$)/);if(m){const r=state.rows.find(r=>r.number===Number(m[1]));if(r)return r.id}if(f.amount){const n=num(f.amount),matches=state.rows.filter(r=>Math.abs(num(r.amount)-n)<0.001);if(matches.length===1)return matches[0].id}return null}');
+ const explicit=new RegExp('(?:^|[^a-z0-9])'+batch+'[-_ ]?(\\d{1,3})(?=$|[^0-9])','i').exec(stem);
+ if(explicit){const r=state.rows.find(r=>r.number===Number(explicit[1]));if(r)return r.id}
+ if(f.amount!==''&&f.amount!=null){
+  const n=num(f.amount);
+  if(Number.isFinite(n)){const matches=state.rows.filter(r=>Number.isFinite(num(r.amount))&&Math.abs(num(r.amount)-n)<=0.01);if(matches.length===1)return matches[0].id}
+ }
+ return null
+}
 async function unpack(inputs){
 const output=[];
 for(const f of inputs){
