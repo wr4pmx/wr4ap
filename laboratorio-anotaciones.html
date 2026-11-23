@@ -15,7 +15,7 @@ const $=id=>document.getElementById(id), state={notes:[],selected:null,pending:n
 const clamp=n=>Math.max(0,Math.min(1,n));
 const MAX_PHOTO_BYTES=20*1024*1024;
 const MAX_PHOTO_PIXELS=40*1000*1000; // Evita decodificaciones gigantes aun con archivos comprimidos pequeños.
-function resetPhoto(){if(state.url){URL.revokeObjectURL(state.url);state.url=null}state.notes=[];state.selected=null;state.pending=null;state.ready=false;state.placing=false;state.photo=null;$('editor').classList.add('hidden');$('picture').removeAttribute('src');$('picture').classList.add('hidden');$('empty').classList.remove('hidden');render()}
+function resetPhoto(){if(state.url){URL.revokeObjectURL(state.url);state.url=null}state.notes=[];state.selected=null;state.pending=null;state.ready=false;state.placing=false;state.photo=null;$('author').value='';$('message').value='';$('validation').textContent='';$('editor').classList.add('hidden');$('picture').removeAttribute('src');$('picture').classList.add('hidden');$('empty').classList.remove('hidden');render()}
 window.addEventListener('pagehide',resetPhoto);
 function render(){
  const hasPhoto=!!state.url&&state.ready,show=$('visible').checked;
