@@ -28,6 +28,8 @@ const checks = [
   ['visibilidad preservada en JSON', /visible:visible!==false/],
   ['nuevas notas visibles inicialmente', /text,visible:true/],
   ['exportación de notas', /wr4p\.photo-annotations\.v1/],
+  ['Escape cancela edición sin guardar', /e\.key==='Escape'&&![^\n]*cancelEditor\(\)/],
+  ['cancelación devuelve foco al control', /function cancelEditor\(\)\{[^\n]*\$\('add'\)\.focus\(\)/],
   ['tarea solo por acción explícita', /task\.onclick\s*=/],
   ['reinicio de URL al abandonar página', /addEventListener\('pagehide',resetPhoto\)/],
   ['identificación de foto en exportación', /photo:state\.photo/],
