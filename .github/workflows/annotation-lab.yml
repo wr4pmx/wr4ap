@@ -1,0 +1,20 @@
+name: Annotation lab contract
+on:
+  pull_request:
+    paths:
+      - 'laboratorio-anotaciones.html'
+      - 'tests/laboratorio-anotaciones.test.cjs'
+      - '.github/workflows/annotation-lab.yml'
+  workflow_dispatch:
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node tests/laboratorio-anotaciones.test.cjs
