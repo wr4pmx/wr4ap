@@ -8,6 +8,9 @@ const scripts = [...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gi)]
 assert.equal(scripts.length, 1, 'Debe haber un solo script inline');
 new vm.Script(scripts[0], { filename: 'laboratorio-anotaciones.html' });
 const checks = [
+  ['escenario accesible por teclado', /tabindex="0" role="group"/],
+  ['anotación central con teclado', /state\.pending=\{x:0\.5,y:0\.5\}/],
+  ['teclas Enter y espacio', /\['Enter',' '\]\.includes\(e\.key\)/],
   ['imagen original intacta', /URL\.createObjectURL\(file\)/],
   ['liberación de URL', /URL\.revokeObjectURL\(state\.url\)/],
   ['coordenadas relativas', /getBoundingClientRect\(\)/],
