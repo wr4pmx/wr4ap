@@ -17,6 +17,7 @@ const checks = [
   ['borrar borrador y validación al cambiar foto', /state\.photo=null;\$\('author'\)\.value='';\$\('message'\)\.value='';\$\('validation'\)\.textContent='';/],
   ['limpiar foto anterior antes de validar reemplazo', /const file=e\.target\.files\?\.\[0\];if\(!file\)return;resetPhoto\(\);e\.target\.value='';if\(!\['image\/jpeg'/],
   ['permite volver a seleccionar el mismo archivo', /resetPhoto\(\);e\.target\.value='';if/],
+  ['cancelar reemplazo conserva anotaciones', /if\\(state\\.notes\\.length&&!confirm\\([^\\n]*\\)\\)return;resetPhoto\\(\\)/],
   ['validación de tamaño', /file\.size\s*>\s*MAX_PHOTO_BYTES/],
   ['límite de píxeles decodificados', /img\.naturalWidth\*img\.naturalHeight>MAX_PHOTO_PIXELS/],
   ['lista explícita de formatos seguros (sin SVG)', /\['image\/jpeg','image\/png','image\/webp','image\/gif'\]\.includes\(file\.type\)/],
