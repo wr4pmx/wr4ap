@@ -22,7 +22,7 @@ function render(){
  $('add').disabled=!hasPhoto;$('export').disabled=!state.notes.length;$('clear').disabled=!state.notes.length;
  $('stage').classList.toggle('annotating',state.placing);
  $('stage').querySelectorAll('.pin').forEach(n=>n.remove());
- if(show&&hasPhoto)state.notes.forEach((note,i)=>{if(note.visible===false)return;{const b=document.createElement('button');b.className='pin'+(state.selected===note.id?' active':'');b.style.left=(note.x*100)+'%';b.style.top=(note.y*100)+'%';b.textContent=i+1;b.title='Abrir comentario '+(i+1);b.setAttribute('aria-label',b.title);b.onclick=e=>{e.stopPropagation();state.selected=note.id;render()};$('stage').append(b)});
+ if(show&&hasPhoto)state.notes.forEach((note,i)=>{if(note.visible===false)return;const b=document.createElement('button');b.className='pin'+(state.selected===note.id?' active':'');b.style.left=(note.x*100)+'%';b.style.top=(note.y*100)+'%';b.textContent=i+1;b.title='Abrir comentario '+(i+1);b.setAttribute('aria-label',b.title);b.onclick=e=>{e.stopPropagation();state.selected=note.id;render()};$('stage').append(b)});
  const list=$('notes');list.replaceChildren();
  if(!state.notes.length){list.textContent='Sin anotaciones.';return}
  state.notes.forEach((note,i)=>{const item=document.createElement('article');item.className='entry';const heading=document.createElement('strong');heading.textContent=(i+1)+'. '+note.author;const body=document.createElement('p');body.textContent=note.text;item.append(heading,body);if(state.selected===note.id){const tag=document.createElement('small');tag.textContent='Nota seleccionada · posición '+Math.round(note.x*100)+'%, '+Math.round(note.y*100)+'%';item.append(tag)}
