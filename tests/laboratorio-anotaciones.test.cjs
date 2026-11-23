@@ -16,7 +16,10 @@ const checks = [
   ['texto seguro sin HTML dinámico', /body\.textContent\s*=\s*note\.text/],
   ['visibilidad de marcadores', /if\(show&&hasPhoto\)/],
   ['exportación de notas', /wr4p\.photo-annotations\.v1/],
-  ['tarea solo por acción explícita', /task\.onclick\s*=/]
+  ['tarea solo por acción explícita', /task\.onclick\s*=/],
+  ['reinicio de URL al abandonar página', /addEventListener\('pagehide',resetPhoto\)/],
+  ['identificación de foto en exportación', /photo:state\.photo/],
+  ['metadatos sin incrustar imagen', /state\.photo=\{name:file\.name,size:file\.size,lastModified:file\.lastModified,type:file\.type\}/]
 ];
 for (const [name, pattern] of checks) {
   assert.match(html, pattern, name);
