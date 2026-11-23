@@ -22,6 +22,7 @@ const checks = [
   ['visibilidad de marcadores', /if\(show&&hasPhoto\)/],
   ['visibilidad independiente por nota sin renumerar', /state\.notes\.forEach\(\(note,i\)=>\{if\(note\.visible===false\)return;/],
   ['numeración estable respecto al listado', /b\.textContent=i\+1/],
+  ['foco restaurado tras render de pin seleccionado', /b\.onclick=e=>\{e\.stopPropagation\(\);state\.selected=note\.id;render\(\);const selectedPin=.*?selectedPin\.focus\(\)\}/],
   ['alternar visibilidad manualmente', /visibility\.onclick=\(\)=>\{note\.visible=note\.visible===false;render\(\)\}/],
   ['visibilidad preservada en JSON', /visible:visible!==false/],
   ['nuevas notas visibles inicialmente', /text,visible:true/],
