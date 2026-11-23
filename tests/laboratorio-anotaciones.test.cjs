@@ -12,7 +12,7 @@ const checks = [
   ['liberación de URL', /URL\.revokeObjectURL\(state\.url\)/],
   ['coordenadas relativas', /getBoundingClientRect\(\)/],
   ['validación de tamaño', /file\.size\s*>\s*MAX_PHOTO_BYTES/],
-  ['rechazo de SVG', /file\.type\s*===\s*'image\/svg\+xml'/],
+  ['lista explícita de formatos seguros (sin SVG)', /\['image\/jpeg','image\/png','image\/webp','image\/gif'\]\.includes\(file\.type\)/],
   ['texto seguro sin HTML dinámico', /body\.textContent\s*=\s*note\.text/],
   ['visibilidad de marcadores', /if\(show&&hasPhoto\)/],
   ['exportación de notas', /wr4p\.photo-annotations\.v1/],
