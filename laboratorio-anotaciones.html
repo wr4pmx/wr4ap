@@ -27,7 +27,7 @@ function render(){
  if(!state.notes.length){list.textContent='Sin anotaciones.';return}
  state.notes.forEach((note,i)=>{const item=document.createElement('article');item.className='entry';const heading=document.createElement('strong');heading.textContent=(i+1)+'. '+note.author;const body=document.createElement('p');body.textContent=note.text;item.append(heading,body);if(state.selected===note.id){const tag=document.createElement('small');tag.textContent='Nota seleccionada · posición '+Math.round(note.x*100)+'%, '+Math.round(note.y*100)+'%';item.append(tag)}
  const visibility=document.createElement('button');visibility.textContent=note.visible===false?'Mostrar marcador':'Ocultar marcador';visibility.setAttribute('aria-pressed',String(note.visible!==false));visibility.onclick=()=>{note.visible=note.visible===false;render()};
- const focus=document.createElement('button');focus.textContent='Localizar';focus.onclick=()=>{state.selected=note.id;$('visible').checked=true;render()};
+ const focus=document.createElement('button');focus.textContent='Localizar';focus.onclick=()=>{state.selected=note.id;note.visible=true;$('visible').checked=true;render();const pin=Array.from($('stage').querySelectorAll('.pin')).find(p=>p.textContent===String(i+1));if(pin)pin.focus()};
  const task=document.createElement('button');task.textContent='Copiar como tarea';task.onclick=()=>{const text='Revisar anotación de '+note.author+': '+note.text;if(navigator.clipboard?.writeText)navigator.clipboard.writeText(text).catch(()=>window.prompt('Copia esta tarea:',text));else window.prompt('Copia esta tarea:',text)};
  item.append(document.createElement('br'),visibility,focus,task);list.append(item)});
 }
