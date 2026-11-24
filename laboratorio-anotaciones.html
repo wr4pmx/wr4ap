@@ -31,7 +31,24 @@ function render(){
  const task=document.createElement('button');task.textContent='Copiar como tarea';task.onclick=()=>{const text='Revisar anotación de '+note.author+': '+note.text;if(navigator.clipboard?.writeText)navigator.clipboard.writeText(text).catch(()=>window.prompt('Copia esta tarea:',text));else window.prompt('Copia esta tarea:',text)};
  item.append(document.createElement('br'),visibility,focus,task);list.append(item)});
 }
-$('photo').onchange=e=>{const file=e.target.files?.[0];if(!file)return;e.target.value='';if(state.notes.length&&!confirm('Cambiar de fotografía descartará las anotaciones de esta sesión. ¿Continuar?'))return;resetPhoto();if(!['image/jpeg','image/png','image/webp','image/gif'].includes(file.type)){alert('Selecciona una fotografía raster (JPEG, PNG, WebP o GIF).');e.target.value='';return}if(file.size>MAX_PHOTO_BYTES){alert('La fotografía excede el límite de 20 MB.');e.target.value='';return}const url=URL.createObjectURL(file);const img=$('picture');img.onload=()=>{if(state.url!==url)return;if(!img.naturalWidth||!img.naturalHeight||img.naturalWidth*img.naturalHeight>MAX_PHOTO_PIXELS){resetPhoto();$('empty').textContent='La imagen supera 40 megapíxeles o no tiene dimensiones válidas.';e.target.value='';return}state.ready=true;img.classList.remove('hidden');$('empty').classList.add('hidden');render()};img.onerror=()=>{if(state.url!==url)return;resetPhoto();$('empty').textContent='No se pudo abrir esta fotografía. Selecciona otra.';e.target.value=''};state.url=url;state.photo={name:file.name,size:file.size,lastModified:file.lastModified,type:file.type};img.src=url;render()};
+let candidate=null;
+function cancelCandidate(){if(candidate){candidate.img.onload=null;candidate.img.onerror=null;URL.revokeObjectURL(candidate.url);candidate=null}}
+window.addEventListener('pagehide',cancelCandidate);
+$('photo').onchange=e=>{
+ const file=e.target.files?.[0];if(!file)return;e.target.value='';cancelCandidate();
+ if(!['image/jpeg','image/png','image/webp','image/gif'].includes(file.type)){alert('Selecciona una fotografía raster (JPEG, PNG, WebP o GIF).');return}
+ if(file.size>MAX_PHOTO_BYTES){alert('La fotografía excede el límite de 20 MB.');return}
+ const url=URL.createObjectURL(file),img=new Image();const next={url,img};candidate=next;
+ img.onerror=()=>{if(candidate!==next)return;cancelCandidate();alert('No se pudo abrir esta fotografía. Selecciona otra.')};
+ img.onload=()=>{
+  if(candidate!==next)return;
+  if(!img.naturalWidth||!img.naturalHeight||img.naturalWidth*img.naturalHeight>MAX_PHOTO_PIXELS){cancelCandidate();alert('La imagen supera 40 megapíxeles o no tiene dimensiones válidas.');return}
+  if((state.notes.length||state.pending)&&!confirm('Cambiar de fotografía descartará las anotaciones de esta sesión. ¿Continuar?')){cancelCandidate();return}
+  candidate=null;img.onload=null;img.onerror=null;
+  resetPhoto();state.url=url;state.photo={name:file.name,size:file.size,lastModified:file.lastModified,type:file.type};state.ready=true;
+  $('picture').src=url;$('picture').classList.remove('hidden');$('empty').classList.add('hidden');render();
+ };img.src=url;
+};
 $('add').onclick=()=>{state.placing=!state.placing;render();if(state.placing)$('stage').focus()};
 $('stage').onkeydown=e=>{if(!state.ready||!state.placing||e.target!==$('stage')||!['Enter',' '].includes(e.key))return;e.preventDefault();state.pending={x:0.5,y:0.5};state.placing=false;$('editor').classList.remove('hidden');$('message').focus();render()};
 $('stage').onclick=e=>{if(!state.ready||!state.placing||e.target.closest('.pin'))return;const img=$('picture'),rect=img.getBoundingClientRect();if(!rect.width||!rect.height)return;const x=(e.clientX-rect.left)/rect.width,y=(e.clientY-rect.top)/rect.height;if(x<0||x>1||y<0||y>1)return;state.pending={x:clamp(x),y:clamp(y)};state.placing=false;$('editor').classList.remove('hidden');$('message').focus();render()};
