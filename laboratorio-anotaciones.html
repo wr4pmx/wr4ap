@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>WR4P · Laboratorio de anotaciones</title>
+<style>
+:root{font:16px system-ui;background:#11131a;color:#f7f7fa}*{box-sizing:border-box}body{margin:0}header,main{max-width:1050px;margin:auto;padding:18px}a{color:#ff9bb1}h1{margin:.3em 0}p,.hint{color:#c7c9d1}button,input,textarea{font:inherit}button{background:#ff6a91;color:#210813;border:0;border-radius:8px;padding:9px 12px;cursor:pointer}button:focus-visible,input:focus-visible,textarea:focus-visible{outline:3px solid #ffd57e}button[disabled]{opacity:.5}.tools{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin:16px 0}.stage{position:relative;display:inline-block;max-width:100%;background:#242632;border:1px solid #535563;border-radius:12px;overflow:hidden}.stage img{display:block;max-width:100%;max-height:68vh;width:auto;height:auto}.stage.annotating{cursor:crosshair}.pin{position:absolute;transform:translate(-50%,-50%);border:2px solid white;border-radius:50%;width:30px;height:30px;display:grid;place-items:center;padding:0;font-size:13px;background:#e83f70;color:white;box-shadow:0 1px 6px #000a}.pin:focus-visible{outline:3px solid #ffd57e}.pin.active{background:#3f79e8}.panel{background:#222530;border:1px solid #4b4e5b;border-radius:12px;padding:16px;margin-top:14px}.entry{border-bottom:1px solid #555966;padding:10px 0}.entry:last-child{border:0}.entry button{margin:6px 6px 0 0}textarea,input[type=text]{width:100%;background:#11131a;color:white;border:1px solid #777b8a;border-radius:6px;padding:9px}textarea{min-height:70px}.hidden{display:none!important}small{color:#b8bac5}.badge{font-size:12px;color:#ffdca3}label{display:block;margin:8px 0}#empty{padding:70px 20px;text-align:center}
+</style></head><body>
+<header><a href="./scout.html">← Scout</a><h1>Visor de anotaciones · Laboratorio</h1><p>Prueba aislada. Para accesibilidad, activa «Colocar nota» y pulsa Enter sobre la fotografía para anotar el centro. Sin conexión a la base de datos: la imagen permanece en tu dispositivo y las notas se guardan solo durante esta sesión. No uses información real.</p></header>
+<main><div class="tools"><label>Fotografía de prueba <input id="photo" type="file" accept="image/*"></label><label><input id="visible" type="checkbox" checked> Mostrar notas</label><button id="add" disabled>Colocar nota</button><button id="export" disabled>Exportar notas JSON</button><button id="clear" disabled>Limpiar notas</button></div>
+<div id="stage" class="stage" tabindex="0" role="group" aria-label="Fotografía: al activar colocar nota, presiona Enter para anotar el centro o haz clic sobre un punto"><div id="empty">Selecciona una fotografía ficticia para empezar.</div><img id="picture" alt="Fotografía seleccionada" class="hidden"></div>
+<div id="editor" class="panel hidden"><h2>Nueva anotación</h2><label>Autor <input id="author" type="text" maxlength="80" placeholder="Dirección / Arte / Locaciones"></label><label>Comentario <textarea id="message" maxlength="1500"></textarea></label><button id="save">Guardar nota</button><button id="cancel">Cancelar</button><p id="validation" role="status"></p></div>
+<section class="panel"><h2>Conversación sobre la fotografía</h2><p class="hint">Selecciona un marcador para consultar el hilo. Puedes ocultar cada marcador por separado sin borrar el comentario. Una nota no se convierte automáticamente en tarea.</p><div id="notes" aria-live="polite">Sin anotaciones.</div></section></main>
+<script>
+(()=>{'use strict';
+const $=id=>document.getElementById(id), state={notes:[],selected:null,pending:null,url:null,ready:false,placing:false,photo:null};
+const clamp=n=>Math.max(0,Math.min(1,n));
+const MAX_PHOTO_BYTES=20*1024*1024;
+const MAX_PHOTO_PIXELS=40*1000*1000; // Evita decodificaciones gigantes aun con archivos comprimidos pequeños.
+function resetPhoto(){if(state.url){URL.revokeObjectURL(state.url);state.url=null}state.notes=[];state.selected=null;state.pending=null;state.ready=false;state.placing=false;state.photo=null;$('author').value='';$('message').value='';$('validation').textContent='';$('editor').classList.add('hidden');$('picture').removeAttribute('src');$('picture').classList.add('hidden');$('empty').classList.remove('hidden');render()}
+window.addEventListener('pagehide',resetPhoto);
+function render(){
+ const hasPhoto=!!state.url&&state.ready,show=$('visible').checked;
+ $('add').disabled=!hasPhoto;$('export').disabled=!state.notes.length;$('clear').disabled=!state.notes.length;
+ $('stage').classList.toggle('annotating',state.placing);
+ $('stage').querySelectorAll('.pin').forEach(n=>n.remove());
+ if(show&&hasPhoto)state.notes.forEach((note,i)=>{if(note.visible===false)return;const b=document.createElement('button');b.className='pin'+(state.selected===note.id?' active':'');b.style.left=(note.x*100)+'%';b.style.top=(note.y*100)+'%';b.textContent=i+1;b.title='Abrir comentario '+(i+1);b.setAttribute('aria-label',b.title);b.onclick=e=>{e.stopPropagation();state.selected=note.id;render();const selectedPin=Array.from($('stage').querySelectorAll('.pin')).find(pin=>pin.textContent===String(i+1));if(selectedPin)selectedPin.focus()};$('stage').append(b)});
+ const list=$('notes');list.replaceChildren();
+ if(!state.notes.length){list.textContent='Sin anotaciones.';return}
+ state.notes.forEach((note,i)=>{const item=document.createElement('article');item.className='entry';const heading=document.createElement('strong');heading.textContent=(i+1)+'. '+note.author;const body=document.createElement('p');body.textContent=note.text;item.append(heading,body);if(state.selected===note.id){const tag=document.createElement('small');tag.textContent='Nota seleccionada · posición '+Math.round(note.x*100)+'%, '+Math.round(note.y*100)+'%';item.append(tag)}
+ const visibility=document.createElement('button');visibility.textContent=note.visible===false?'Mostrar marcador':'Ocultar marcador';visibility.setAttribute('aria-pressed',String(note.visible!==false));visibility.dataset.noteId=note.id;visibility.onclick=()=>{note.visible=note.visible===false;render();const replacement=Array.from($('notes').querySelectorAll('button[data-note-id]')).find(button=>button.dataset.noteId===note.id);if(replacement)replacement.focus()};
+ const focus=document.createElement('button');focus.textContent='Localizar';focus.onclick=()=>{state.selected=note.id;note.visible=true;$('visible').checked=true;render();const pin=Array.from($('stage').querySelectorAll('.pin')).find(p=>p.textContent===String(i+1));if(pin)pin.focus()};
+ const task=document.createElement('button');task.textContent='Copiar como tarea';task.onclick=()=>{const text='Revisar anotación de '+note.author+': '+note.text;if(navigator.clipboard?.writeText)navigator.clipboard.writeText(text).catch(()=>window.prompt('Copia esta tarea:',text));else window.prompt('Copia esta tarea:',text)};
+ item.append(document.createElement('br'),visibility,focus,task);list.append(item)});
+}
+let candidate=null;
+function cancelCandidate(){if(candidate){candidate.img.onload=null;candidate.img.onerror=null;URL.revokeObjectURL(candidate.url);candidate=null}}
+window.addEventListener('pagehide',cancelCandidate);
+$('photo').onchange=e=>{
+ const file=e.target.files?.[0];if(!file)return;e.target.value='';cancelCandidate();
+ if(!['image/jpeg','image/png','image/webp','image/gif'].includes(file.type)){alert('Selecciona una fotografía raster (JPEG, PNG, WebP o GIF).');return}
+ if(file.size>MAX_PHOTO_BYTES){alert('La fotografía excede el límite de 20 MB.');return}
+ const url=URL.createObjectURL(file),img=new Image();const next={url,img};candidate=next;
+ img.onerror=()=>{if(candidate!==next)return;cancelCandidate();alert('No se pudo abrir esta fotografía. Selecciona otra.')};
+ img.onload=()=>{
+  if(candidate!==next)return;
+  if(!img.naturalWidth||!img.naturalHeight||img.naturalWidth*img.naturalHeight>MAX_PHOTO_PIXELS){cancelCandidate();alert('La imagen supera 40 megapíxeles o no tiene dimensiones válidas.');return}
+  if((state.notes.length||state.pending)&&!confirm('Cambiar de fotografía descartará las anotaciones de esta sesión. ¿Continuar?')){cancelCandidate();return}
+  candidate=null;img.onload=null;img.onerror=null;
+  resetPhoto();state.url=url;state.photo={name:file.name,size:file.size,lastModified:file.lastModified,type:file.type};state.ready=true;
+  $('picture').src=url;$('picture').classList.remove('hidden');$('empty').classList.add('hidden');render();
+ };img.src=url;
+};
+$('add').onclick=()=>{state.placing=!state.placing;render();if(state.placing)$('stage').focus()};
+$('stage').onkeydown=e=>{if(!state.ready||!state.placing||e.target!==$('stage')||!['Enter',' '].includes(e.key))return;e.preventDefault();state.pending={x:0.5,y:0.5};state.placing=false;$('editor').classList.remove('hidden');$('message').focus();render()};
+$('stage').onclick=e=>{if(!state.ready||!state.placing||e.target.closest('.pin'))return;const img=$('picture'),rect=img.getBoundingClientRect();if(!rect.width||!rect.height)return;const x=(e.clientX-rect.left)/rect.width,y=(e.clientY-rect.top)/rect.height;if(x<0||x>1||y<0||y>1)return;state.pending={x:clamp(x),y:clamp(y)};state.placing=false;$('editor').classList.remove('hidden');$('message').focus();render()};
+$('save').onclick=()=>{const author=$('author').value.trim(),text=$('message').value.trim();if(!state.pending||!author||!text){$('validation').textContent='Escribe autor y comentario.';return}const id=globalThis.crypto?.randomUUID?.()||String(Date.now())+'-'+Math.random();state.notes.push({id,...state.pending,author,text,visible:true});state.selected=id;state.pending=null;$('message').value='';$('validation').textContent='';$('editor').classList.add('hidden');render()};
+function cancelEditor(){state.pending=null;$('validation').textContent='';$('editor').classList.add('hidden');if(state.ready)$('add').focus()}
+$('cancel').onclick=cancelEditor;
+$('editor').onkeydown=e=>{if(e.key==='Escape'&&!$('editor').classList.contains('hidden')){e.preventDefault();cancelEditor()}};
+$('visible').onchange=render;
+$('clear').onclick=()=>{if(confirm('¿Eliminar todas las notas de esta sesión?')){state.notes=[];state.selected=null;render()}};
+$('export').onclick=()=>{const payload={schema:'wr4p.photo-annotations.v1',coordinateSystem:'relative-image',photo:state.photo,notes:state.notes.map(({id,x,y,author,text,visible})=>({id,x,y,author,text,visible:visible!==false}))};const url=URL.createObjectURL(new Blob([JSON.stringify(payload,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='wr4p-anotaciones.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
+render();
+})();
+</script></body></html>
